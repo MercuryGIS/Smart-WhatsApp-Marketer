@@ -26,6 +26,21 @@ const AUDIENCE_SEGMENTS = [
 
 const API_VERSION = 'v21.0';
 
+// Helper to convert base64/dataURL to Blob for Meta Upload
+const dataURLtoBlob = (dataurl: string) => {
+  const arr = dataurl.split(',');
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  if (!mimeMatch) throw new Error("Invalid Data URI");
+  const mime = mimeMatch[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+};
+
 const WhatsAppHub: React.FC = () => {
   const { notify } = useNotify();
   const [currentStage, setCurrentStage] = useState(1);
@@ -181,15 +196,18 @@ const WhatsAppHub: React.FC = () => {
     notify(`Local ${type} linked.`);
   };
 
-  const uploadToMeta = async (file: File, phoneId: string, token: string): Promise<string> => {
+  const uploadToMeta = async (file: Blob | File, phoneId: string, token: string, fileName: string): Promise<string> => {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file, fileName);
     formData.append('messaging_product', 'whatsapp');
+    formData.append('type', file.type);
+
     const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${phoneId}/media`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     });
+    
     const data = await res.json();
     if (!res.ok) {
       if (data.error?.code === 190) throw new Error("Meta Session Expired. Please update your WhatsApp Access Token in Integrations.");
@@ -221,26 +239,28 @@ const WhatsAppHub: React.FC = () => {
         const mediaData = activeAssetType === 'image' ? aiImage : activeAssetType === 'video' ? aiVideo : aiAudio;
         
         if (mediaData) {
-          let file: File;
+          let blob: Blob;
           const mimeMap: any = { image: 'image/jpeg', video: 'video/mp4', audio: 'audio/mp4' };
           const extMap: any = { image: 'jpg', video: 'mp4', audio: 'mp4' };
+          const fileName = `zenith_asset_${Date.now()}.${extMap[activeAssetType]}`;
 
           if (mediaData.startsWith('data:')) {
-            const arr = mediaData.split(',');
-            const bstr = atob(arr[1]);
-            let n = bstr.length; const u8arr = new Uint8Array(n);
-            while(n--) u8arr[n] = bstr.charCodeAt(n);
-            file = new File([u8arr], `media.${extMap[activeAssetType]}`, {type: mimeMap[activeAssetType]});
+            blob = dataURLtoBlob(mediaData);
           } else {
             // It's an external URL (e.g. Veo video link)
-            const response = await fetch(mediaData);
-            const blob = await response.blob();
-            file = new File([blob], `media.${extMap[activeAssetType]}`, { type: mimeMap[activeAssetType] });
+            try {
+              const response = await fetch(mediaData);
+              if (!response.ok) throw new Error(`Remote asset unreachable (Status: ${response.status})`);
+              blob = await response.blob();
+            } catch (fetchErr: any) {
+              throw new Error(`Failed to fetch AI generated asset: ${fetchErr.message}. Ensure CORS is enabled on source.`);
+            }
           }
 
-          mediaId = await uploadToMeta(file, phoneId, accessToken);
+          mediaId = await uploadToMeta(blob, phoneId, accessToken, fileName);
           setBroadcastLog([{ name: "SYSTEM", status: "MEDIA OK", isError: false }]);
-          await new Promise(r => setTimeout(r, 1000));
+          // Allow some time for Meta's CDN to process the newly uploaded file ID
+          await new Promise(r => setTimeout(r, 2000));
         }
       }
     } catch (e: any) { 
