@@ -1,6 +1,6 @@
 {
-  "name": "Zenith AI WhatsApp CRM",
-  "description": "A high-performance WhatsApp Sender and CRM powered by Gemini AI, featuring 3D interactive dashboards, automated campaign management, and smart AI customer service agents, all backed by Google Sheets.",
+  "name": "WhatsAi Agent CRM",
+  "description": "A high-performance WhatsApp Sender and CRM powered by Gemini AI, featuring automated campaign management and smart AI customer service agents, all backed by Google Sheets.",
   "requestFramePermissions": [
     "camera",
     "microphone"

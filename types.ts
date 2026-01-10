@@ -48,13 +48,15 @@ export interface Campaign {
   campaignid: string;
   name: string;
   date: string;
-  audience: string;      // New: Targeted group
-  template: string;      // New: Strategy used
-  mediaurl?: string;     // New: Attached media
+  audience: string;
+  template: string;
+  mediaurl?: string;
   sent: number;
+  failed: number;
   opened: number;
   replied: number;
   status: string;
+  sender?: string; // New: Tracks which WhatsApp account sent the campaign
 }
 
 export interface KeyRecord {

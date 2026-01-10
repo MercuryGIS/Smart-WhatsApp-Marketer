@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ICONS } from '../constants';
 
 interface LayoutProps {
@@ -10,8 +10,25 @@ interface LayoutProps {
   onLogout: () => void;
 }
 
+const DEFAULT_LOGO = "https://drive.google.com/uc?export=view&id=1cR5t_XGWXqfHOba-WQ-v4tAxXO_ZFy8L";
+
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, user, onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [brandInfo, setBrandInfo] = useState({
+    name: localStorage.getItem('zenith_name') || 'WhatsAi Agent',
+    logo: localStorage.getItem('zenith_logo') || DEFAULT_LOGO
+  });
+
+  useEffect(() => {
+    const handleSync = () => {
+      setBrandInfo({
+        name: localStorage.getItem('zenith_name') || 'WhatsAi Agent',
+        logo: localStorage.getItem('zenith_logo') || DEFAULT_LOGO
+      });
+    };
+    window.addEventListener('storage', handleSync);
+    return () => window.removeEventListener('storage', handleSync);
+  }, []);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: ICONS.Dashboard },
@@ -27,10 +44,19 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, user
       {/* Sidebar */}
       <aside className={`transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} glass-panel border-r border-slate-800 flex flex-col`}>
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
-            <span className="font-bold text-xl">Z</span>
-          </div>
-          {isSidebarOpen && <span className="font-bold text-lg tracking-tight">ZENITH AI</span>}
+          <img 
+            src={brandInfo.logo} 
+            alt="Brand Logo" 
+            className="w-10 h-10 rounded-xl shadow-lg shadow-indigo-500/30 object-cover border border-white/5"
+            onError={(e) => { (e.target as HTMLImageElement).src = "https://img.icons8.com/fluency/48/bot.png"; }}
+          />
+          {isSidebarOpen && (
+             <span className="font-black text-lg tracking-tighter uppercase italic truncate">
+                {brandInfo.name.split(' ').map((word, i) => (
+                   <span key={i} className={i === 1 ? "text-indigo-500" : ""}>{word} </span>
+                ))}
+             </span>
+          )}
         </div>
 
         <nav className="flex-1 mt-6 px-3 space-y-1">
@@ -52,11 +78,13 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, user
 
         <div className="p-4 mt-auto border-t border-slate-800/50">
           <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500"></div>
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-[10px] font-black">
+               {user?.name?.charAt(0) || 'U'}
+            </div>
             {isSidebarOpen && (
               <div className="flex flex-col overflow-hidden">
                 <span className="text-sm font-semibold truncate">{user?.name || 'User'}</span>
-                <span className="text-xs text-slate-500 truncate">{user?.role || 'Agent'}</span>
+                <span className="text-xs text-slate-500 truncate uppercase tracking-widest">{user?.role || 'Agent'}</span>
               </div>
             )}
           </div>
@@ -72,10 +100,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, user
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Animated Background Element */}
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-600/10 blur-[120px] rounded-full -z-10 animate-pulse"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-purple-600/10 blur-[100px] rounded-full -z-10 animate-pulse delay-1000"></div>
-
         <header className="h-20 flex items-center justify-between px-8 glass-panel border-b border-slate-800/50 z-10">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
             {navItems.find(n => n.id === activeTab)?.label}

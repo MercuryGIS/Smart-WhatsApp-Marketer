@@ -16,27 +16,37 @@ export const generateMarketingTemplate = async (
     Language: ${language}. Product: ${productName}. Price: ${price} MAD.
     Audience Segment: ${targetAudience}.
     
-    Task 1: Generate 4 distinct message variations:
-    1. Angle: ${angle} (The primary request)
-    2. Angle: FOMO/Urgency (Limited stock/Time)
-    3. Angle: Storytelling (Customer journey/Result)
-    4. Angle: Ultra-Short (Direct value proposition)
+    CRITICAL INSTRUCTION: You MUST write the 'messageText' using ARABIC SCRIPT (حروف عربية). 
+    DO NOT use Latin characters or Arabezi (e.g., don't write "salam", write "سلام"). 
+    The dialect should be authentic and persuasive.
 
-    Task 2: Provide a Strategic Insight Summary.
-    - Estimate Conversion Probability (0-100%).
-    - Estimate Revenue Uplift based on 100 sent messages.
-    - Explain the "Why" behind the logic.
+    Task 1: Generate 4 distinct marketing variations:
+    1. Angle: ${angle} (Primary strategy)
+    2. Angle: High Urgency (Stock depletion/Flash offer)
+    3. Angle: Social Proof (Customer testimonial/Result)
+    4. Angle: Core Value (Ultra-short/Impactful)
+
+    For each variation, you MUST provide:
+    - title: A short descriptive name in English.
+    - messageText: The localized text for WhatsApp in ARABIC CHARACTERS.
+    - imagePrompt: A VISUAL description in English for an image generator.
+    - videoPrompt: A DYNAMIC description in English for a video generator.
+    - audioScript: A short spoken ad script (10-15s) in English for translation/voiceover.
+
+    Task 2: Strategic Summary.
+    - conversionProb: Estimate (0-100).
+    - revenueUplift: Short string estimate.
+    - strategicAdvice: 1 sentence on why this works.
 
     Rules:
-    - Use localized ${language} nuances.
-    - Include emojis.
-    - Create highly specific prompts for Image (1:1) and Video (16:9).
+    - Use authentic ${language} idioms and professional emojis.
+    - messageText MUST BE Arabic script.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Generate 4 professional variations and insights for ${productName}. Context: ${description}`,
+      contents: `Synthesize 4 distinct Arabic script variations for ${productName}.`,
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -100,12 +110,10 @@ export const generateAIVideo = async (prompt: string) => {
     config: { numberOfVideos: 1, resolution: '720p', aspectRatio: '16:9' }
   });
   
-  // Smart Polling Strategy: Long initial wait for high-compute tasks
   let attempts = 0;
   while (!operation.done) {
     attempts++;
-    const waitTime = attempts < 3 ? 15000 : 10000; // Poll less frequently at first
-    await new Promise(resolve => setTimeout(resolve, waitTime));
+    await new Promise(resolve => setTimeout(resolve, 10000));
     operation = await ai.operations.getVideosOperation({ operation: operation });
     if (attempts > 30) throw new Error("Neural synthesis timed out.");
   }
@@ -133,19 +141,16 @@ export const generateSmartReply = async (
 ) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const systemInstruction = `
-    You are a high-performance "Neural Sales Interceptor" for WhatsApp.
-    Role: Sales Closer.
-    Language: ${language}.
+    You are a high-performance "Neural Sales Interceptor".
+    Language: ${language}. Use ARABIC CHARACTERS (حروف عربية).
     
-    Product Context for knowledge base:
+    Product Context:
     ${productContext}
 
     Instructions:
-    - Analyze the customer's message.
-    - Handle objections professionally.
-    - Propose a closing action (e.g., checkout link, confirmation).
-    - Be concise, persuasive, and friendly.
-    - Use localized slang and emojis where appropriate.
+    - Respond in the customer's dialect using Arabic script.
+    - Handle objections with empathy and professional logic.
+    - Always aim for a "Confirm Order" action.
   `;
 
   try {
@@ -158,9 +163,9 @@ export const generateSmartReply = async (
         thinkingConfig: { thinkingBudget: 2000 }
       }
     });
-    return response.text || "I'm sorry, I couldn't process a smart reply at this moment.";
+    return response.text || "I'm sorry, I couldn't process a smart reply.";
   } catch (error) {
     console.error("Agent Error:", error);
-    return "The Neural Agent is temporarily offline. Please reply manually.";
+    return "The Neural Agent is temporarily offline.";
   }
 };

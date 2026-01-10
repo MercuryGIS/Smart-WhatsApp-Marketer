@@ -1,53 +1,44 @@
 
-// Utility to clean phone numbers for WhatsApp compatibility
+// Utility to clean phone numbers for Meta WhatsApp E.164 compatibility
 export const cleanPhone = (phone: string) => {
   if (!phone) return '';
+  // Remove all non-numeric characters
   let cleaned = phone.toString().replace(/\D/g, '');
-  // Normalize Morocco numbers (convert 06... to 2126...)
+  
+  // Handle Moroccan local format (06... or 07... -> 2126... / 2127...)
   if (cleaned.startsWith('0') && cleaned.length === 10) {
     cleaned = '212' + cleaned.substring(1);
   }
+  
+  // If user typed 21206... remove the extra zero
+  if (cleaned.startsWith('2120') && cleaned.length === 13) {
+    cleaned = '212' + cleaned.substring(4);
+  }
+
+  // Final check: ensure no leading zeros at all for Meta
   return cleaned;
 };
 
-// Fuzzy match helper for row identification
-const fuzzyClean = (val: any) => val ? val.toString().toLowerCase().replace(/\D/g, '') : '';
-
-// Normalizes sheet data to consistent frontend keys based on the specific sheet name
+// Normalizes sheet data to consistent frontend keys
 const normalizeData = (data: any[], sheetName: string) => {
   if (!Array.isArray(data)) return [];
   return data.map(item => {
     const normalized: any = {};
     for (const key in item) {
-      const cleanKey = key.toLowerCase().replace(/\s+/g, '');
+      const cleanKey = key.toLowerCase().trim().replace(/\s+/g, '');
       
-      // Contextual mapping logic
       if (sheetName === 'Clients') {
         if (['client', 'clientname', 'customer', 'name'].includes(cleanKey)) normalized['client'] = item[key];
         else if (['phone', 'phonenumber', 'whatsapp', 'tel', 'mobile'].includes(cleanKey)) normalized['phone'] = item[key];
         else if (['price', 'amount', 'total'].includes(cleanKey)) normalized['price'] = item[key];
         else if (['status', 'statuses', 'orderstatus'].includes(cleanKey)) normalized['statuses'] = item[key];
         else normalized[cleanKey] = item[key];
-      } else if (sheetName === 'Users') {
-        if (['username', 'user'].includes(cleanKey)) normalized['username'] = item[key];
-        else if (['password', 'pass'].includes(cleanKey)) normalized['password'] = item[key];
-        else if (['name', 'fullname'].includes(cleanKey)) normalized['name'] = item[key];
-        else if (['commissionvalue', 'commvalue'].includes(cleanKey)) normalized['commissionvalue'] = item[key];
-        else if (['commissiontype', 'commtype'].includes(cleanKey)) normalized['commissiontype'] = item[key];
-        else normalized[cleanKey] = item[key];
-      } else if (sheetName === 'Product Info') {
-        if (['productid', 'id', 'product_id'].includes(cleanKey)) normalized['productid'] = item[key];
-        else if (['productname', 'name'].includes(cleanKey)) normalized['productname'] = item[key];
-        else normalized[cleanKey] = item[key];
       } else if (sheetName === 'Keys') {
-        if (['key', 'variable'].includes(cleanKey)) normalized['key'] = item[key];
-        else if (['value', 'secret'].includes(cleanKey)) normalized['value'] = item[key];
-        else normalized[cleanKey] = item[key];
-      } else if (sheetName === 'Campaigns') {
-        if (['campaignid', 'id', 'campaign_id'].includes(cleanKey)) normalized['campaignid'] = item[key];
+        const kValue = item[key] ? item[key].toString().toLowerCase().trim() : '';
+        if (['key', 'variable', 'name'].includes(cleanKey)) normalized['key'] = kValue;
+        else if (['value', 'secret', 'data'].includes(cleanKey)) normalized['value'] = item[key];
         else normalized[cleanKey] = item[key];
       } else {
-        // Fallback for generic sheets
         normalized[cleanKey] = item[key];
       }
     }
@@ -57,7 +48,6 @@ const normalizeData = (data: any[], sheetName: string) => {
 
 const getScriptUrl = () => localStorage.getItem('zenith_script_url') || '';
 
-// POST helper to handle Google Apps Script with proper CORS
 const postToScript = async (url: string, payload: any) => {
   try {
     const response = await fetch(url, {
@@ -66,11 +56,10 @@ const postToScript = async (url: string, payload: any) => {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload),
     });
-    const result = await response.json();
-    return result;
+    return await response.json();
   } catch (error) {
     console.error("Zenith Bridge Error:", error);
-    return { success: false, error: "Network error. Check Script Deployment or VPN." };
+    return { success: false, error: "Network error." };
   }
 };
 
@@ -78,7 +67,6 @@ export const sheetsService = {
   async fetchData(sheetName: string) {
     const url = getScriptUrl();
     if (!url) return normalizeData(this.getMockData(sheetName), sheetName);
-    
     try {
       const response = await fetch(`${url}?action=read&sheet=${sheetName}`);
       const result = await response.json();
@@ -103,26 +91,15 @@ export const sheetsService = {
 
   async deleteData(sheetName: string, idKey: string, idValue: any) {
     const url = getScriptUrl();
-    if (!url) {
-      alert("Configure Apps Script URL in Settings first.");
-      return { success: false };
-    }
-    const result = await postToScript(url, { action: 'delete', sheet: sheetName, idKey, idValue });
-    if (!result.success) {
-      alert(`Delete Error: ${result.error || 'Record match failed in Google Sheets'}`);
-    } else {
-      // Subtle alert or we could just return and let the page reload
-      console.log("Zenith Bridge: Successfully deleted row.");
-    }
-    return result;
+    if (!url) return { success: false };
+    return await postToScript(url, { action: 'delete', sheet: sheetName, idKey, idValue });
   },
 
   getMockData(sheetName: string) {
     switch(sheetName) {
-      case 'Clients':
-        return [{ client: 'Demo User', phone: '212600000000', price: 0, statuses: 'New' }];
-      case 'Users':
-        return [{ username: 'admin', password: '123', role: 'admin', name: 'Super Admin' }];
+      case 'Clients': return [{ client: 'Demo User', phone: '212600000000', price: 0, statuses: 'New' }];
+      case 'Users': return [{ username: 'admin', password: '123', role: 'admin', name: 'Super Admin' }];
+      case 'WhatsApp Templates': return [{ name: 'hello_world', language: 'en_US' }];
       default: return [];
     }
   }
