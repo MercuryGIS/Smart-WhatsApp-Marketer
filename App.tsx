@@ -17,8 +17,86 @@ const ToastContext = createContext({
 });
 export const useNotify = () => useContext(ToastContext);
 
+const PrivacyPolicyView: React.FC<{ onBack: () => void }> = ({ onBack }) => (
+  <div className="min-h-screen bg-[#020617] text-slate-300 p-8 lg:p-24 overflow-y-auto">
+    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center border-b border-slate-800 pb-8">
+        <div>
+          <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">Privacy <span className="text-indigo-500">Policy</span></h1>
+          <p className="text-[10px] font-black tracking-widest text-slate-500 mt-2 uppercase">Compliance Protocol v1.0 // Meta Developer Standard</p>
+        </div>
+        <button onClick={onBack} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-800 transition-all">Back to Terminal</button>
+      </div>
+
+      <div className="space-y-10 text-sm leading-relaxed">
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">1. Overview</h2>
+          <p>This Privacy Policy describes how <strong>WhatsAi Agent</strong> ("we", "our", or "the App") collects, uses, and shares information when you use our services. We are committed to protecting user data and complying with the Meta Platform Terms and Developer Policies.</p>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">2. Data We Collect</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-6 bg-slate-900/50 rounded-2xl border border-slate-800">
+              <h4 className="font-bold text-indigo-400 mb-2">User-Provided Data</h4>
+              <p className="text-xs text-slate-400">Information you input into the Google Sheets backend, including client names, phone numbers, and message logs.</p>
+            </div>
+            <div className="p-6 bg-slate-900/50 rounded-2xl border border-slate-800">
+              <h4 className="font-bold text-indigo-400 mb-2">Platform Data</h4>
+              <p className="text-xs text-slate-400">Data received via Meta WhatsApp Business API, including delivery statuses, read receipts, and incoming message webhooks.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">3. How Data is Used</h2>
+          <ul className="list-disc pl-5 space-y-2 text-slate-400">
+            <li>To facilitate automated messaging via the WhatsApp Business Platform.</li>
+            <li>To synchronize client records with your private Google Sheets backend.</li>
+            <li>To generate AI-driven smart responses and marketing content using Gemini AI.</li>
+            <li>To provide analytical insights regarding campaign performance (Sent, Opened, Replied).</li>
+          </ul>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">4. Third-Party Processors</h2>
+          <p>We utilize the following third-party services to provide our functionality. Each service maintains its own privacy standards:</p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-4 bg-slate-900/30 rounded-xl border border-slate-800">
+              <span className="font-bold text-white">Meta Platforms, Inc.</span>
+              <span className="text-[10px] uppercase font-black text-slate-500">WhatsApp API Provider</span>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-slate-900/30 rounded-xl border border-slate-800">
+              <span className="font-bold text-white">Google Cloud Platform</span>
+              <span className="text-[10px] uppercase font-black text-slate-500">Sheets & AI Infrastructure</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">5. Data Retention & Deletion</h2>
+          <p>As a user-controlled CRM, the App does not maintain a separate database. All information is stored in the Google Sheets you provide. You may delete data at any time by modifying your sheets or deleting the script bridge.</p>
+          <div className="p-6 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
+            <p className="text-xs italic text-indigo-300">"Under the GDPR and Meta Developer Policies, users have the right to request the permanent deletion of their platform data. Since we do not store data on our own servers, deleting the App's bridge URL effectively terminates data processing."</p>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-bold text-white uppercase tracking-tight">6. Contact</h2>
+          <p>For questions regarding this policy or data processing compliance, please contact your account administrator or the technical lead of this deployment.</p>
+        </section>
+      </div>
+
+      <div className="pt-12 border-t border-slate-800 text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-600">WhatsAi Agent OS // Last Updated: October 2023</p>
+      </div>
+    </div>
+  </div>
+);
+
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState<any>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -259,6 +337,14 @@ function createJsonResponse(obj) {
     }
   };
 
+  if (showPrivacy) {
+    return (
+      <ToastContext.Provider value={{ notify }}>
+        <PrivacyPolicyView onBack={() => setShowPrivacy(false)} />
+      </ToastContext.Provider>
+    );
+  }
+
   if (!isLoggedIn) {
     return (
       <ToastContext.Provider value={{ notify }}>
@@ -364,15 +450,26 @@ function createJsonResponse(obj) {
 
                 <div className="pt-10 flex flex-col items-center gap-4 border-t border-slate-800">
                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Administrative Deployment</p>
-                   <button 
-                     onClick={() => setShowScriptModal(true)}
-                     className="text-indigo-400 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 group"
-                   >
-                     <div className="w-6 h-6 rounded-lg bg-indigo-600/10 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                     </div>
-                     Extract Backend Core
-                   </button>
+                   <div className="flex gap-8">
+                     <button 
+                       onClick={() => setShowScriptModal(true)}
+                       className="text-indigo-400 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 group"
+                     >
+                       <div className="w-6 h-6 rounded-lg bg-indigo-600/10 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                       </div>
+                       Extract Backend Core
+                     </button>
+                     <button 
+                       onClick={() => setShowPrivacy(true)}
+                       className="text-slate-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 group"
+                     >
+                       <div className="w-6 h-6 rounded-lg bg-slate-800/30 flex items-center justify-center group-hover:bg-slate-700 transition-all">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                       </div>
+                       Privacy Policy
+                     </button>
+                   </div>
                 </div>
              </div>
           </div>
