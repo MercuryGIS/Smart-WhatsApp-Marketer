@@ -24,8 +24,6 @@ const AUDIENCE_SEGMENTS = [
   { id: 'RECOVERY', label: 'Cart Recovery', desc: 'Pending status only', icon: '🛒' }
 ];
 
-const API_VERSION = 'v21.0';
-
 const WhatsAppHub: React.FC = () => {
   const { notify } = useNotify();
   const [currentStage, setCurrentStage] = useState(1);
@@ -41,6 +39,7 @@ const WhatsAppHub: React.FC = () => {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   
+  const [localFile, setLocalFile] = useState<File | null>(null);
   const [variations, setVariations] = useState<any[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [aiImage, setAiImage] = useState<string | null>(null);
@@ -51,6 +50,7 @@ const WhatsAppHub: React.FC = () => {
   const [customMessage, setCustomMessage] = useState('');
   const [useCustomMessage, setUseCustomMessage] = useState(false);
 
+  // Default to 'text' for simpler direct AI messaging, templates require specific setup
   const [msgMode, setMsgMode] = useState<'text' | 'template'>('text');
   const [selectedTemplate, setSelectedTemplate] = useState({ name: 'hello_world', language: 'en_US' });
   const [templateButtonSuffix, setTemplateButtonSuffix] = useState('');
@@ -170,6 +170,7 @@ const WhatsAppHub: React.FC = () => {
   };
 
   const handleLocalFile = (type: 'image' | 'video' | 'audio', file: File) => {
+    setLocalFile(file);
     setActiveAssetType(type);
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -185,16 +186,13 @@ const WhatsAppHub: React.FC = () => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('messaging_product', 'whatsapp');
-    const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${phoneId}/media`, {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/media`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     });
     const data = await res.json();
-    if (!res.ok) {
-      if (data.error?.code === 190) throw new Error("Meta Session Expired. Please update your WhatsApp Access Token in Integrations.");
-      throw new Error(data.error?.message || "Meta media upload failed");
-    }
+    if (!res.ok) throw new Error(data.error?.message || "Meta media upload failed");
     return data.id;
   };
 
@@ -219,35 +217,23 @@ const WhatsAppHub: React.FC = () => {
       if (activeAssetType !== 'none') {
         setBroadcastLog([{ name: "SYSTEM", status: "SYNCING MEDIA...", isError: false }]);
         const mediaData = activeAssetType === 'image' ? aiImage : activeAssetType === 'video' ? aiVideo : aiAudio;
-        
-        if (mediaData) {
-          let file: File;
+        if (mediaData?.startsWith('data:')) {
+          const arr = mediaData.split(',');
+          const bstr = atob(arr[1]);
+          let n = bstr.length; const u8arr = new Uint8Array(n);
+          while(n--) u8arr[n] = bstr.charCodeAt(n);
           const mimeMap: any = { image: 'image/jpeg', video: 'video/mp4', audio: 'audio/mp4' };
           const extMap: any = { image: 'jpg', video: 'mp4', audio: 'mp4' };
-
-          if (mediaData.startsWith('data:')) {
-            const arr = mediaData.split(',');
-            const bstr = atob(arr[1]);
-            let n = bstr.length; const u8arr = new Uint8Array(n);
-            while(n--) u8arr[n] = bstr.charCodeAt(n);
-            file = new File([u8arr], `media.${extMap[activeAssetType]}`, {type: mimeMap[activeAssetType]});
-          } else {
-            // It's an external URL (e.g. Veo video link)
-            const response = await fetch(mediaData);
-            const blob = await response.blob();
-            file = new File([blob], `media.${extMap[activeAssetType]}`, { type: mimeMap[activeAssetType] });
-          }
-
+          const file = new File([u8arr], `media.${extMap[activeAssetType]}`, {type: mimeMap[activeAssetType]});
           mediaId = await uploadToMeta(file, phoneId, accessToken);
-          setBroadcastLog([{ name: "SYSTEM", status: "MEDIA OK", isError: false }]);
-          await new Promise(r => setTimeout(r, 1000));
+          setBroadcastLog([{ name: "SYSTEM", status: "MEDIA OK. WAITING...", isError: false }]);
+          await new Promise(r => setTimeout(r, 2000));
         }
       }
     } catch (e: any) { 
       setIsBroadcasting(false);
-      const isExpired = e.message.toLowerCase().includes("expired");
-      notify(isExpired ? "Meta Session Expired" : "Media Sync Failure", "error");
-      return setBroadcastLog([{ name: "CRITICAL", status: isExpired ? "TOKEN EXPIRED" : "MEDIA FAIL", isError: true, details: e.message }]); 
+      notify("Media Synchronization Failed", "error");
+      return setBroadcastLog([{ name: "CRITICAL", status: "MEDIA FAIL", isError: true, details: e.message }]); 
     }
 
     let successCount = 0; let failedCount = 0;
@@ -261,52 +247,31 @@ const WhatsAppHub: React.FC = () => {
       try {
         let finalBody = activeDraft.messageText;
         if (templateButtonSuffix && msgMode === 'text') {
-            finalBody += `\n\n🔗 Link: ${templateButtonSuffix}`;
+            finalBody += `\n\nLink: ${templateButtonSuffix}`;
         }
 
-        let payload: any = { 
-            messaging_product: "whatsapp", 
-            to: phone, 
-            recipient_type: "individual" 
-        };
+        let payload: any = { messaging_product: "whatsapp", to: phone, recipient_type: "individual" };
 
         if (msgMode === 'template') {
           payload.type = "template";
-          payload.template = { 
-            name: selectedTemplate.name, 
-            language: { code: selectedTemplate.language } 
-          };
+          payload.template = { name: selectedTemplate.name, language: { code: selectedTemplate.language } };
           const components: any[] = [];
           
           if (selectedTemplate.name !== 'hello_world') {
-             // Media Header
+             // Header parameter if media exists
              if (mediaId && activeAssetType !== 'none' && activeAssetType !== 'audio') {
-                components.push({ 
-                    type: "header", 
-                    parameters: [{ 
-                        type: activeAssetType, 
-                        [activeAssetType]: { id: mediaId } 
-                    }] 
-                });
+                components.push({ type: "header", parameters: [{ type: activeAssetType === 'image' ? 'image' : 'video', [activeAssetType === 'image' ? 'image' : 'video']: { id: mediaId } }] });
              }
-             // Body Mapping
-             components.push({ 
-                type: "body", 
-                parameters: [{ type: "text", text: finalBody }] 
-             });
-             // Button Mapping
+             // Body parameter: The AI generated text
+             components.push({ type: "body", parameters: [{ type: "text", text: finalBody }] });
+             // Button parameter if link provided
              if (templateButtonSuffix) {
-                components.push({ 
-                    type: "button", 
-                    sub_type: "url", 
-                    index: "0", 
-                    parameters: [{ type: "text", text: templateButtonSuffix }] 
-                });
+                components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: templateButtonSuffix }] });
              }
           }
           if (components.length > 0) payload.template.components = components;
         } else {
-          // Direct Mode
+          // Direct Message Mode
           if (activeAssetType !== 'none' && mediaId) {
             payload.type = activeAssetType;
             payload[activeAssetType] = { id: mediaId };
@@ -317,12 +282,9 @@ const WhatsAppHub: React.FC = () => {
           }
         }
 
-        const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${phoneId}/messages`, {
+        const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
           method: 'POST',
-          headers: { 
-            'Authorization': `Bearer ${accessToken}`, 
-            'Content-Type': 'application/json' 
-          },
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
 
@@ -332,18 +294,13 @@ const WhatsAppHub: React.FC = () => {
           setBroadcastLog(prev => { const u = [...prev]; u[0].status = 'SUCCESS ✅'; return u; });
         } else {
           failedCount++;
-          const errorMsg = resData.error?.message || "Rejection from Meta Cloud.";
           setBroadcastLog(prev => { 
             const u = [...prev]; 
             u[0].status = `ERROR ${resData.error?.code || 'Meta'}`; 
             u[0].isError = true;
-            u[0].details = errorMsg;
+            u[0].details = resData.error?.message || "Rejection from Meta Cloud.";
             return u; 
           });
-          if (resData.error?.code === 190) {
-             notify("Session Expired Mid-Batch. Aborting.", "error");
-             break;
-          }
         }
       } catch (e: any) { 
         failedCount++;
@@ -492,30 +449,30 @@ const WhatsAppHub: React.FC = () => {
                  <div className="space-y-6">
                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-4 italic">Neural Generation Engine</p>
                     <div className="grid grid-cols-3 gap-4">
-                        <button onClick={() => createAsset('image')} disabled={!!mediaLoading} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'image' && aiImage?.startsWith('http') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
+                        <button onClick={() => createAsset('image')} disabled={!!mediaLoading} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'image' && aiImage?.startsWith('data:') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
                            {mediaLoading === 'image' ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <ICONS.Sparkles className="w-6 h-6" />}
                            <span className="text-[10px] font-black uppercase tracking-widest">Neural Image</span>
                         </button>
-                        <button onClick={() => createAsset('video')} disabled={!!mediaLoading} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'video' && aiVideo?.startsWith('http') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
+                        <button onClick={() => createAsset('video')} disabled={!!mediaLoading} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'video' && aiVideo?.startsWith('data:') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
                            {mediaLoading === 'video' ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <ICONS.Sparkles className="w-6 h-6" />}
                            <span className="text-[10px] font-black uppercase tracking-widest">Neural Video</span>
                         </button>
-                        <button onClick={() => createAsset('audio')} disabled={!!mediaLoading} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'audio' && aiAudio?.startsWith('data:audio') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
+                        <button onClick={() => createAsset('audio')} disabled={!!mediaLoading} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'audio' && aiAudio?.startsWith('data:') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
                            {mediaLoading === 'audio' ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>}
                            <span className="text-[10px] font-black uppercase tracking-widest">Neural Audio</span>
                         </button>
                     </div>
                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-4 italic pt-4">Local Discovery Hub</p>
                     <div className="grid grid-cols-3 gap-4">
-                        <button onClick={() => imageInputRef.current?.click()} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'image' && aiImage && aiImage.startsWith('data:image') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
+                        <button onClick={() => imageInputRef.current?.click()} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'image' && aiImage && !aiImage.startsWith('data:') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
                            <ICONS.Plus className="w-6 h-6" />
                            <span className="text-[10px] font-black uppercase tracking-widest">Local Image</span>
                         </button>
-                        <button onClick={() => videoInputRef.current?.click()} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'video' && aiVideo && aiVideo.startsWith('data:video') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
+                        <button onClick={() => videoInputRef.current?.click()} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'video' && aiVideo && !aiVideo.startsWith('data:') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
                            <ICONS.Plus className="w-6 h-6" />
                            <span className="text-[10px] font-black uppercase tracking-widest">Local Video</span>
                         </button>
-                        <button onClick={() => audioInputRef.current?.click()} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'audio' && aiAudio && aiAudio.startsWith('data:audio') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
+                        <button onClick={() => audioInputRef.current?.click()} className={`flex flex-col items-center gap-3 p-6 rounded-3xl border border-slate-800 transition-all ${activeAssetType === 'audio' && aiAudio && !aiAudio.startsWith('data:') ? 'bg-indigo-600 border-indigo-400' : 'bg-slate-950 hover:bg-slate-900'}`}>
                            <ICONS.Plus className="w-6 h-6" />
                            <span className="text-[10px] font-black uppercase tracking-widest">Local Audio</span>
                         </button>
@@ -524,12 +481,12 @@ const WhatsAppHub: React.FC = () => {
                  <div className="space-y-4 pt-10 border-t border-slate-800">
                     <div className="flex items-center gap-2 mb-2">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">CTA Action / Checkout Link</label>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Call-to-Action Link</label>
                     </div>
                     <input 
                         value={templateButtonSuffix} 
                         onChange={e => setTemplateButtonSuffix(e.target.value)} 
-                        placeholder="https://yourstore.com/checkout" 
+                        placeholder="https://yourstore.com/offer" 
                         className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 text-sm font-bold text-indigo-400 outline-none focus:border-indigo-500 shadow-inner" 
                     />
                  </div>
@@ -641,7 +598,7 @@ const WhatsAppHub: React.FC = () => {
               )}
               <div className="flex flex-col gap-4">
                 <button onClick={executeLaunch} disabled={isBroadcasting} className="w-full py-8 bg-indigo-600 hover:bg-indigo-500 rounded-full font-black text-sm uppercase tracking-[0.5em] transition-all shadow-2xl shadow-indigo-600/30 disabled:opacity-50">
-                   {isBroadcasting ? `VELOCITY: ${progress}%` : 'ENGAGE MISSION'}
+                   {isBroadcasting ? `ENGAGED: ${progress}%` : 'ENGAGE MISSION'}
                 </button>
                 <button onClick={() => setCurrentStage(3)} disabled={isBroadcasting} className="w-full py-4 text-slate-500 font-black text-[10px] uppercase tracking-widest hover:text-white transition-all">Modify Payload</button>
               </div>
@@ -666,7 +623,7 @@ const WhatsAppHub: React.FC = () => {
                  <h3 className="text-6xl font-black text-slate-300">{lastMission?.total || 0}</h3>
               </div>
            </div>
-           <button onClick={() => { setCurrentStage(1); setBroadcastLog([]); setUseCustomMessage(false); }} className="w-full py-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-black text-xs uppercase tracking-[0.5em] transition-all">START NEXT MISSION</button>
+           <button onClick={() => { setCurrentStage(1); setBroadcastLog([]); setUseCustomMessage(false); }} className="w-full py-8 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-black text-xs uppercase tracking-[0.5em] transition-all">INITIATE NEXT WAVE</button>
         </div>
       )}
     </div>
